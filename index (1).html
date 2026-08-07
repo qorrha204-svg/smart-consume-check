@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>스마트 소비 체크 — 사기 전에 3분만 생각해보자</title>
+<meta name="description" content="충동구매를 막아주는 3분 소비 의사결정 도구. 7가지 기준으로 점수를 매기면 그 자리에서 바로 구매 등급과 대기 기간을 알려줍니다." />
+<style>
+/* ============================================================================
+   스마트 소비 체크 — 단일 파일, 저장 없이 그 자리에서 바로 계산하는 버전
+   구성: [1] 디자인 토큰  [2] 기본/레이아웃  [3] 능력치 레이더(육각형 스탯 휠)
+        [4] 결과 카드  [5] 반응형
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   [1] 디자인 토큰
+   -------------------------------------------------------------------------*/
+:root{
+  --bg:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-2:#FBFBFD;
+  --line:#E9EBEF;
+  --line-strong:#DDE0E6;
+
+  --ink:#15171C;
+  --ink-2:#40454E;
+  --muted:#8A9099;
+
+  --green:#2FB35C;
+  --blue:#0A7CFF;
+  --orange:#F58220;
+  --amber:#EBA400;
+  --red:#EF4438;
+  --purple:#8E5BE8;
+  --teal:#12A8B8;
+  --indigo:#5B6EF5;
+
+  --r-card:18px;
+  --r-sm:12px;
+  --shadow:0 1px 2px rgba(20,22,28,.04), 0 6px 20px rgba(20,22,28,.05);
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+
+/* ---------------------------------------------------------------------------
+   [2] 기본 스타일 & 레이아웃 — 저장/이력 없이 위→아래로 한 번에 흐른다
+   -------------------------------------------------------------------------*/
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  background:
+    radial-gradient(1100px 560px at 18% -12%, #EEF3FF 0%, rgba(238,243,255,0) 60%),
+    radial-gradient(900px 480px at 96% 0%, #F2FBF5 0%, rgba(242,251,245,0) 55%),
+    var(--bg);
+  color:var(--ink);
+  font-family:"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+              "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; letter-spacing:-.011em;
+  min-height:100%;
+}
+h1,h2{ margin:0; font-weight:700; letter-spacing:-.03em; }
+p{ margin:0; }
+button{ font-family:inherit; color:inherit; cursor:pointer; }
+input{ font-family:inherit; color:inherit; }
+:focus-visible{ outline:2px solid var(--blue); outline-offset:2px; border-radius:8px; }
+
+.app{ max-width:640px; margin:0 auto; padding:32px 20px 64px; }
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-card);
+  box-shadow:var(--shadow);
+  padding:22px;
+}
+.stack > .card + .card{ margin-top:16px; }
+.card-title{ font-size:13px; font-weight:700; letter-spacing:.02em; color:var(--muted); text-transform:uppercase; }
+.card-head{ margin-bottom:14px; }
+
+.hdr{ text-align:center; margin-bottom:22px; }
+.brand{ display:inline-flex; align-items:center; gap:12px; }
+.mark{ width:40px; height:40px; flex:none; }
+.hdr h1{ font-size:24px; }
+.hdr .sub{ color:var(--muted); font-size:14px; font-weight:600; margin-top:4px; }
+
+/* 입력 폼 */
+.form-row{ display:grid; grid-template-columns:1.3fr 1fr; gap:10px; }
+.field{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.field label{ font-size:12px; font-weight:700; color:var(--muted); padding-left:2px; }
+.field input{
+  width:100%; height:44px; padding:0 13px;
+  background:var(--surface-2);
+  border:1px solid var(--line); border-radius:var(--r-sm);
+  font-size:14.5px; font-weight:600;
+  transition:border-color .18s var(--ease), background .18s var(--ease), box-shadow .18s var(--ease);
+}
+.field input:focus{
+  outline:none; background:var(--surface);
+  border-color:var(--blue); box-shadow:0 0 0 3px rgba(10,124,255,.12);
+}
+.field input::placeholder{ color:#B6BBC3; font-weight:600; }
+
+/* ---------------------------------------------------------------------------
+   [3] 능력치 레이더(육각형 스탯 휠) 평가 영역
+   게임/만화의 캐릭터 능력치 다이어그램처럼, 여러 축을 가진 육각형 그물 위에
+   현재 점수를 이어 만든 도형이 실시간으로 커지고 색이 바뀐다.
+   -------------------------------------------------------------------------*/
+.comb-card{ padding:26px 20px 20px; overflow:hidden; }
+
+.radar-wrap{
+  position:relative;
+  width:min(340px, 88vw);
+  aspect-ratio:1 / 1;
+  margin:4px auto 2px;
+  --radarColor:var(--line-strong);
+}
+.radar-svg{ width:100%; height:100%; display:block; overflow:visible; }
+
+.radar-grid{ fill:none; stroke:var(--line); stroke-width:1; }
+.radar-grid.outer{ stroke:var(--line-strong); stroke-width:1.4; }
+.radar-axis{ stroke:var(--line); stroke-width:1; }
+
+.radar-poly{
+  fill:var(--radarColor); fill-opacity:.16;
+  stroke:var(--radarColor); stroke-width:2.5;
+  stroke-linejoin:round; stroke-linecap:round;
+  transition:fill .3s var(--ease), stroke .3s var(--ease);
+}
+.radar-pt{ fill:var(--radarColor); stroke:#fff; stroke-width:1.6; transition:fill .3s var(--ease); }
+
+.radar-label{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  text-align:center; height:100%; justify-content:center;
+}
+.radar-label .rl-icon{ width:20px; height:20px; color:var(--c); display:flex; }
+.radar-label .rl-icon svg{ width:100%; height:100%; display:block; }
+.radar-label .rl-text{ font-size:11.5px; font-weight:700; color:var(--ink-2); letter-spacing:-.02em; white-space:nowrap; }
+
+.radar-center{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  display:flex; flex-direction:column; align-items:center; pointer-events:none;
+}
+.radar-center b{ font-size:26px; font-weight:700; letter-spacing:-.045em; font-variant-numeric:tabular-nums; }
+.radar-center span{ font-size:10.5px; font-weight:700; color:var(--muted); letter-spacing:.02em; margin-top:1px; }
+
+/* 항목별 점수 선택 행(레이더 아래, 실제 입력은 여기서) */
+.stat-rows{ display:flex; flex-direction:column; gap:8px; margin-top:18px; }
+.stat-row{
+  --c:var(--blue);
+  display:flex; align-items:center; gap:11px;
+  padding:10px 12px; border-radius:14px;
+  border:1px solid var(--line); background:var(--surface-2);
+  transition:border-color .18s var(--ease), background .18s var(--ease);
+}
+.stat-row.done{
+  border-color:color-mix(in srgb, var(--c) 42%, var(--line));
+  background:color-mix(in srgb, var(--c) 5%, #fff);
+}
+.sr-icon{
+  width:34px; height:34px; flex:none; border-radius:10px;
+  display:grid; place-items:center; color:var(--c);
+  background:color-mix(in srgb, var(--c) 11%, #fff);
+}
+.sr-icon svg{ width:17px; height:17px; }
+.sr-text{ flex:1; min-width:0; }
+.sr-title{ font-size:13.5px; font-weight:700; letter-spacing:-.02em; }
+.sr-desc{ font-size:11.5px; font-weight:600; color:var(--muted); margin-top:1px; }
+.sr-dots{ display:flex; gap:5px; flex:none; }
+.sr-dot{
+  width:29px; height:29px; border-radius:50%; padding:0;
+  border:1.5px solid var(--line-strong); background:var(--surface);
+  color:var(--muted); font-size:12px; font-weight:700;
+  display:grid; place-items:center;
+  transition:transform .16s var(--ease), background .16s var(--ease),
+             border-color .16s var(--ease), color .16s var(--ease);
+}
+.sr-dot:hover{ border-color:var(--c); color:var(--c); transform:translateY(-1px); }
+.sr-dot[aria-checked="true"]{
+  background:var(--c); border-color:var(--c); color:#fff; transform:scale(1.05);
+  box-shadow:0 3px 8px color-mix(in srgb, var(--c) 35%, transparent);
+}
+
+.comb-hint{
+  text-align:center; font-size:12.5px; font-weight:600; color:var(--muted);
+  margin-top:14px;
+}
+
+/* ---------------------------------------------------------------------------
+   [4] 결과 카드 — 7개를 다 고르면 그 즉시 이 화면이 열린다
+   -------------------------------------------------------------------------*/
+.result-card{ padding:0; overflow:hidden; position:relative; }
+.result-body{ padding:22px 22px 20px; transition:filter .5s var(--ease), opacity .5s var(--ease); }
+.result-card.locked .result-body{ filter:blur(7px); opacity:.45; pointer-events:none; user-select:none; }
+.lock-veil{
+  position:absolute; inset:0 0 70px 0; z-index:3;
+  display:grid; place-items:center; gap:8px; align-content:center;
+  text-align:center; padding:24px;
+  background:linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.8));
+  transition:opacity .4s var(--ease), visibility .4s;
+}
+.result-card:not(.locked) .lock-veil{ opacity:0; visibility:hidden; }
+.lock-veil strong{ font-size:15px; font-weight:700; }
+.lock-veil span{ font-size:13px; font-weight:600; color:var(--muted); }
+.lock-count{
+  display:inline-flex; align-items:center; gap:6px; margin-top:2px;
+  font-size:12px; font-weight:700; color:var(--blue);
+  background:color-mix(in srgb, var(--blue) 10%, #fff);
+  border-radius:999px; padding:5px 12px;
+}
+
+.score-row{ display:flex; align-items:flex-end; gap:10px; }
+.score-num{
+  font-size:60px; font-weight:700; line-height:.95; letter-spacing:-.05em;
+  font-variant-numeric:tabular-nums; color:var(--gc, var(--ink));
+  transition:color .35s var(--ease);
+}
+.score-max{ font-size:17px; font-weight:700; color:var(--muted); padding-bottom:7px; }
+.score-track{ height:6px; border-radius:99px; background:var(--line); margin:16px 0 18px; overflow:hidden; }
+.score-fill{
+  display:block; height:100%; width:0%; border-radius:99px;
+  background:var(--gc, var(--blue));
+  transition:width .5s var(--ease), background .35s var(--ease);
+}
+.grade-row{ display:flex; align-items:center; gap:12px; }
+.grade-badge{
+  width:64px; height:56px; flex:none;
+  clip-path:polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  display:grid; place-items:center;
+  font-size:25px; font-weight:700; letter-spacing:-.04em;
+  color:#fff; background:var(--gc, var(--ink));
+  filter:drop-shadow(0 5px 12px rgba(20,22,28,.2));
+}
+.grade-badge.pop{ animation:pop .42s var(--ease); }
+@keyframes pop{ 0%{transform:scale(.7); opacity:.4} 60%{transform:scale(1.08)} 100%{transform:scale(1)} }
+.grade-action{ font-size:20px; font-weight:700; letter-spacing:-.035em; }
+.grade-sub{ font-size:13px; font-weight:600; color:var(--muted); }
+
+.meta-list{ margin-top:18px; border-top:1px solid var(--line); }
+.meta-item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+.meta-item dt{ font-size:13px; font-weight:600; color:var(--muted); }
+.meta-item dd{ margin:0; font-size:14px; font-weight:700; text-align:right; }
+
+.comment{
+  margin-top:16px; padding:14px 16px; border-radius:14px;
+  background:color-mix(in srgb, var(--gc, var(--blue)) 7%, #fff);
+  border:1px solid color-mix(in srgb, var(--gc, var(--blue)) 18%, #fff);
+  font-size:14px; font-weight:600; color:var(--ink-2); word-break:keep-all;
+}
+.reasons{ margin-top:14px; display:flex; flex-direction:column; gap:8px; }
+.reason{ display:flex; gap:9px; align-items:flex-start; font-size:13.5px; font-weight:600; color:var(--ink-2); word-break:keep-all; }
+.reason i{ width:6px; height:6px; border-radius:50%; margin-top:7px; flex:none; background:var(--rc, var(--muted)); }
+
+.actions{ display:flex; padding:0 22px 22px; }
+.btn{
+  height:46px; border-radius:14px; border:1px solid var(--line-strong);
+  background:var(--surface-2); color:var(--ink-2);
+  font-size:14.5px; font-weight:700; letter-spacing:-.02em;
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  transition:transform .14s var(--ease), background .18s var(--ease), border-color .18s var(--ease);
+  padding:0 18px; width:100%;
+}
+.btn:hover{ background:#fff; border-color:var(--muted); }
+.btn:active{ transform:scale(.98); }
+
+footer{ text-align:center; color:var(--muted); font-size:12.5px; font-weight:600; margin-top:28px; }
+
+/* ---------------------------------------------------------------------------
+   [5] 반응형
+   -------------------------------------------------------------------------*/
+@media (max-width:520px){
+  .app{ padding:24px 14px 56px; }
+  .form-row{ grid-template-columns:1fr; }
+  .comb-card{ padding:18px 14px; }
+  .radar-wrap{ width:min(300px, 82vw); }
+  .radar-label .rl-text{ font-size:10.5px; }
+  .radar-center b{ font-size:22px; }
+  .sr-title{ font-size:13px; }
+  .sr-desc{ font-size:11px; }
+  .sr-dot{ width:32px; height:32px; font-size:12.5px; }
+  .score-num{ font-size:52px; }
+}
+
+/* 접근성: 모션 최소화 */
+@media (prefers-reduced-motion:reduce){
+  *{ animation:none !important; transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="hdr">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+        <path d="M13 4h18l9 18-9 18H13L4 22 13 4Z" fill="#15171C"/>
+        <path d="M15.5 22.5l4.6 4.6L29 17.5" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1>스마트 소비 체크</h1>
+        <p class="sub">사기 전에 3분만 생각해보자</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="stack">
+
+    <!-- 사려는 것 -->
+    <section class="card">
+      <div class="card-head"><h2 class="card-title">사려는 것</h2></div>
+      <div class="form-row">
+        <div class="field">
+          <label for="fName">품목명</label>
+          <input id="fName" type="text" placeholder="예) 무선 이어폰" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="fPrice">가격 (원)</label>
+          <input id="fPrice" type="text" inputmode="numeric" placeholder="0" autocomplete="off" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 능력치 레이더 평가 -->
+    <section class="card comb-card">
+      <div class="radar-wrap">
+        <svg class="radar-svg" id="radarSvg" viewBox="0 0 340 340" aria-hidden="true"></svg>
+        <div class="radar-center"><b id="radarCount">0</b><span>/ <span id="radarMax">7</span> 선택</span></div>
+      </div>
+      <div class="stat-rows" id="statRows"></div>
+      <p class="comb-hint">1점은 "전혀 아니다", 5점은 "매우 그렇다". 단, 한 항목이라도 1점이면 총점과 무관하게 치명적 약점으로 보고 구매를 보류해요.</p>
+    </section>
+
+    <!-- 결과: 다 고르는 즉시 이 자리에서 바로 계산된다 -->
+    <section class="card result-card locked" id="resultCard">
+      <div class="lock-veil">
+        <strong>아직 판단 중</strong>
+        <span>7가지 기준을 모두 고르면 결과가 바로 나타납니다</span>
+        <span class="lock-count" id="lockCount">0 / 7 선택</span>
+      </div>
+
+      <div class="result-body">
+        <div class="card-head" style="margin-bottom:10px">
+          <h2 class="card-title" id="resName">이 소비</h2>
+        </div>
+
+        <div class="score-row">
+          <span class="score-num" id="scoreNum">7</span>
+          <span class="score-max" id="scoreMax">/ 35점</span>
+        </div>
+        <div class="score-track"><span class="score-fill" id="scoreFill"></span></div>
+
+        <div class="grade-row">
+          <div class="grade-badge" id="gradeBadge">D</div>
+          <div>
+            <p class="grade-action" id="gradeAction">—</p>
+            <p class="grade-sub" id="gradeSub">—</p>
+          </div>
+        </div>
+
+        <dl class="meta-list">
+          <div class="meta-item"><dt>대기 기간</dt><dd id="mWait">—</dd></div>
+          <div class="meta-item"><dt>다시 볼 날짜</dt><dd id="mWhen">—</dd></div>
+          <div class="meta-item"><dt>가격</dt><dd id="mPrice">—</dd></div>
+        </dl>
+
+        <p class="comment" id="comment">—</p>
+        <div class="reasons" id="reasons"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="resetBtn">다시 평가하기</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>점수는 정답이 아니라 잠깐 멈추는 장치입니다. 새로고침하면 처음부터 다시 시작해요.</footer>
+</div>
+
+<script>
+/* ============================================================================
+   스마트 소비 체크 — 애플리케이션 로직 (저장/이력 없음, 즉시 계산만)
+   [A] 상수/데이터  [B] 유틸  [C] 능력치 레이더 렌더  [D] 계산/결과  [E] 부팅
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   [A] 상수 & 평가 항목 정의
+   -------------------------------------------------------------------------- */
+
+/** 능력치 레이더 7개 평가 항목. 모두 "1점 = 구매에 불리, 5점 = 구매에 유리"로 방향을 통일했다(역점수 없음). */
+const ITEMS = [
+  { key:'need',    label:'필요성',     desc:'없으면 불편한가?',
+    color:'var(--blue)',
+    icon:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>',
+    high:'없으면 불편할 만큼 필요합니다', low:'없어도 크게 불편하지 않습니다' },
+
+  { key:'freq',    label:'사용빈도',   desc:'얼마나 자주 쓸까?',
+    color:'var(--green)',
+    icon:'<circle cx="12" cy="12" r="8.2"/><path d="M12 7.4V12l3 2"/>',
+    high:'자주 손이 갈 물건입니다', low:'생각보다 자주 쓰지 않을 가능성이 큽니다' },
+
+  { key:'value',   label:'장기가치',   desc:'3년 뒤에도 쓸까?',
+    color:'var(--purple)',
+    icon:'<path d="M7 3.5h10M7 20.5h10"/><path d="M8 3.5c0 4 4 4.9 4 8.5s-4 4.5-4 8.5"/><path d="M16 3.5c0 4-4 4.9-4 8.5s4 4.5 4 8.5"/>',
+    high:'3년 뒤에도 남아 있을 소비입니다', low:'금방 안 쓰게 될 확률이 높습니다' },
+
+  { key:'joy',     label:'행복감',     desc:'나를 행복하게 할까?',
+    color:'var(--orange)',
+    icon:'<circle cx="12" cy="12" r="8.2"/><path d="M8.6 14.2c.9 1.2 2 1.8 3.4 1.8s2.5-.6 3.4-1.8"/><path d="M9.3 9.6h.01M14.7 9.6h.01"/>',
+    high:'꽤 오래 기분이 좋아질 소비입니다', low:'기대만큼 기쁘지 않을 수 있습니다' },
+
+  { key:'alt',     label:'대체가능성', desc:'있는 걸로 대체가 안되나?',
+    color:'var(--teal)',
+    icon:'<rect x="8.5" y="8.5" width="11" height="11" rx="2.6"/><path d="M15.5 5.5H6.8A2.3 2.3 0 0 0 4.5 7.8v8.7"/>',
+    high:'이미 가진 것으로는 도저히 대체가 안 됩니다', low:'이미 가진 것으로 충분히 대체할 수 있습니다' },
+
+  { key:'impulse', label:'충동성',     desc:'지금 아니어도 계속 원할까?',
+    color:'var(--red)',
+    icon:'<path d="M13.2 3.2 5.4 13.4h5.3l-.9 7.4 7.8-10.2h-5.3l.9-7.4Z"/>',
+    high:'순간의 충동이 아니라 꾸준히 원해온 것입니다', low:'순간적인 충동 구매 신호가 강하게 보입니다' },
+
+  { key:'afford',  label:'자금 여유도', desc:'생활비에 무리가 안 되나?',
+    color:'var(--indigo)',
+    icon:'<rect x="3" y="6.5" width="18" height="13" rx="2.6"/><path d="M3 10.3h18"/><circle cx="16.8" cy="14.2" r="1.4"/>',
+    high:'지금 형편에 무리 없이 쓸 수 있는 금액입니다', low:'지금 자금 사정에는 부담스러운 금액입니다' }
+];
+
+/** 치명적 약점(자동 구매 보류) — 항목 하나라도 최저점(1점)이면 총점과 무관하게 이 등급을 적용한다 */
+const FAIL_GRADE = {
+  g:'F', color:'var(--red)', action:'구매 보류', wait:-1, waitText:'재평가 필요',
+  sub:'치명적 약점이 있어요',
+  comment:'치명적 약점 — 항목 중 하나라도 1점이면 총점이 높아도 사지 않는 것을 추천합니다. 가장 낮은 점수를 준 이유부터 다시 확인해보세요.'
+};
+
+/** 등급 테이블(높은 점수부터 검사) — 7개 항목 × 1~5점, 총점 7~35점 기준 */
+const GRADES = [
+  { min:31, g:'S', color:'var(--green)',  action:'바로 구매',       wait:0,  waitText:'없음',
+    sub:'망설일 이유가 거의 없어요',   comment:'S등급 — 생활의 질을 높일 가능성이 높습니다. 오래 잘 쓸 소비예요.' },
+  { min:26, g:'A', color:'var(--blue)',   action:'구매 추천',       wait:1,  waitText:'1일',
+    sub:'하루만 자고 일어나서 결정',   comment:'A등급 — 합리적인 소비로 보입니다. 하루만 지나고도 생각나면 사세요.' },
+  { min:21, g:'B', color:'var(--amber)',  action:'7일 대기',        wait:7,  waitText:'7일',
+    sub:'지금은 판단하기 애매해요',    comment:'B등급 — 나쁘지 않지만 급하지도 않습니다. 일주일 뒤에도 떠오르면 그때 사세요.' },
+  { min:16, g:'C', color:'var(--orange)', action:'30일 대기',       wait:30, waitText:'30일',
+    sub:'욕구가 식는지 지켜보세요',    comment:'C등급 — 충동에 가까운 신호가 보입니다. 30일 뒤 다시 판단해도 늦지 않아요.' },
+  { min:7,  g:'D', color:'var(--red)',    action:'사지 않기를 추천', wait:-1, waitText:'구매 보류',
+    sub:'지금은 사지 않는 게 이득',    comment:'D등급 — 사지 않는 편이 좋겠습니다. 이미 가진 것을 먼저 써보세요.' }
+];
+
+const MIN_TOTAL = ITEMS.length;
+const MAX_TOTAL = ITEMS.length * 5;
+
+/** 앱 상태 — 새로고침하면 사라진다(의도적으로 저장하지 않는다) */
+const state = { scores:{} };
+
+/* --------------------------------------------------------------------------
+   [B] 유틸리티
+   -------------------------------------------------------------------------- */
+const $  = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+function todayISO(d = new Date()){
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function prettyDate(iso){
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  const w = ['일','월','화','수','목','금','토'][dt.getDay()];
+  return `${y}년 ${m}월 ${d}일 (${w})`;
+}
+function addDays(iso, days){
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  dt.setDate(dt.getDate() + days);
+  return todayISO(dt);
+}
+const comma = n => (Number(n)||0).toLocaleString('ko-KR');
+const onlyNum = s => String(s).replace(/[^0-9]/g,'');
+function iconSVG(path){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
+
+/* --------------------------------------------------------------------------
+   [C] 능력치 레이더 렌더링
+   -------------------------------------------------------------------------- */
+const RADAR_CX = 170, RADAR_CY = 170, RADAR_R = 104, RADAR_LABEL_R = RADAR_R + 42;
+const RADAR_STEP = 360 / ITEMS.length;
+const radarAngle = i => (-90 + i * RADAR_STEP) * Math.PI / 180;
+const radarPoint = (i, r) => ({
+  x: RADAR_CX + r * Math.cos(radarAngle(i)),
+  y: RADAR_CY + r * Math.sin(radarAngle(i))
+});
+const radarR = new Array(ITEMS.length).fill(0);
+let radarRAF = null;
+
+function renderRadar(){
+  const svg = $('#radarSvg');
+  const parts = [];
+
+  for (let lvl = 1; lvl <= 5; lvl++){
+    const r = RADAR_R * (lvl / 5);
+    const pts = ITEMS.map((_, i) => radarPoint(i, r)).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    parts.push(`<polygon class="radar-grid${lvl === 5 ? ' outer' : ''}" points="${pts}"></polygon>`);
+  }
+  ITEMS.forEach((_, i) => {
+    const p = radarPoint(i, RADAR_R);
+    parts.push(`<line class="radar-axis" x1="${RADAR_CX}" y1="${RADAR_CY}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}"></line>`);
+  });
+
+  parts.push(`<polygon class="radar-poly" id="radarPoly" points=""></polygon>`);
+  ITEMS.forEach(it => {
+    parts.push(`<circle class="radar-pt" id="radarPt-${it.key}" r="4.5" cx="${RADAR_CX}" cy="${RADAR_CY}"></circle>`);
+  });
+
+  ITEMS.forEach((it, i) => {
+    const p = radarPoint(i, RADAR_LABEL_R);
+    parts.push(`
+      <foreignObject x="${(p.x - 46).toFixed(1)}" y="${(p.y - 22).toFixed(1)}" width="92" height="44" style="overflow:visible">
+        <div class="radar-label" style="--c:${it.color}">
+          <span class="rl-icon">${iconSVG(it.icon)}</span>
+          <span class="rl-text">${it.label}</span>
+        </div>
+      </foreignObject>`);
+  });
+
+  svg.innerHTML = parts.join('');
+}
+
+function radarTargets(){
+  return ITEMS.map(it => {
+    const raw = state.scores[it.key];
+    return raw ? (raw / 5) * RADAR_R : 0;
+  });
+}
+function paintRadar(){
+  const poly = $('#radarPoly');
+  const pts = ITEMS.map((_, i) => {
+    const p = radarPoint(i, radarR[i]);
+    return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+  });
+  poly.setAttribute('points', pts.join(' '));
+  ITEMS.forEach((it, i) => {
+    const p = radarPoint(i, radarR[i]);
+    const c = $(`#radarPt-${it.key}`);
+    if (c){ c.setAttribute('cx', p.x.toFixed(1)); c.setAttribute('cy', p.y.toFixed(1)); }
+  });
+}
+function animateRadar(){
+  const targets = radarTargets();
+  const from = radarR.slice();
+  const start = performance.now(), dur = 420;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  cancelAnimationFrame(radarRAF);
+  if (reduce){ targets.forEach((t,i) => radarR[i] = t); paintRadar(); return; }
+  const tick = now => {
+    const p = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    targets.forEach((t,i) => { radarR[i] = from[i] + (t - from[i]) * eased; });
+    paintRadar();
+    if (p < 1) radarRAF = requestAnimationFrame(tick);
+  };
+  radarRAF = requestAnimationFrame(tick);
+}
+
+function renderStatRows(){
+  const wrap = $('#statRows');
+  wrap.innerHTML = ITEMS.map(it => {
+    const dots = [1,2,3,4,5].map(v => `
+      <button class="sr-dot" role="radio" aria-checked="false" aria-label="${it.label} ${v}점"
+              data-key="${it.key}" data-val="${v}">${v}</button>`).join('');
+    return `
+      <div class="stat-row" id="row-${it.key}" style="--c:${it.color}">
+        <span class="sr-icon">${iconSVG(it.icon)}</span>
+        <span class="sr-text">
+          <span class="sr-title">${it.label}</span>
+          <span class="sr-desc">${it.desc}</span>
+        </span>
+        <div class="sr-dots" role="radiogroup" aria-label="${it.label} 점수">${dots}</div>
+      </div>`;
+  }).join('');
+
+  wrap.addEventListener('click', e => {
+    const btn = e.target.closest('.sr-dot');
+    if (!btn) return;
+    setScore(btn.dataset.key, Number(btn.dataset.val));
+  });
+}
+
+function setScore(key, val){
+  state.scores[key] = val;
+  const row = $(`#row-${key}`);
+  $$('.sr-dot', row).forEach(d => d.setAttribute('aria-checked', String(Number(d.dataset.val) === val)));
+  row.classList.add('done');
+  update();
+}
+
+/* --------------------------------------------------------------------------
+   [D] 점수 계산 & 결과 표시
+   -------------------------------------------------------------------------- */
+function calcTotal(scores){
+  return ITEMS.reduce((sum, it) => sum + (scores[it.key] || 0), 0);
+}
+function gradeOf(total, scores){
+  if (scores && ITEMS.some(it => scores[it.key] === 1)) return FAIL_GRADE;
+  return GRADES.find(g => total >= g.min) || GRADES[GRADES.length-1];
+}
+
+let countRAF, shownScore = 0;
+function animateScore(to){
+  cancelAnimationFrame(countRAF);
+  const el = $('#scoreNum'), from = shownScore, start = performance.now(), dur = 420;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce){ el.textContent = to; shownScore = to; return; }
+  const tick = now => {
+    const p = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (to - from) * eased);
+    if (p < 1) countRAF = requestAnimationFrame(tick); else shownScore = to;
+  };
+  countRAF = requestAnimationFrame(tick);
+}
+
+function buildReasons(){
+  const list = ITEMS.map(it => ({ it, v: state.scores[it.key] }));
+  const best  = list.reduce((a,b) => b.v > a.v ? b : a);
+  const worst = list.reduce((a,b) => b.v < a.v ? b : a);
+  const rows = [];
+
+  const failed = list.filter(x => x.v === 1);
+  if (failed.length){
+    const names = failed.map(x => x.it.label).join(', ');
+    rows.push({ c:'var(--red)', t:`<b>치명적 약점</b> · ${names} 항목이 최저점(1점)이라 총점과 무관하게 보류를 권합니다` });
+  }
+  rows.push({ c: best.it.color,  t: `<b>${best.it.label}</b> · ${best.it.high}` });
+  rows.push({ c: worst.it.color, t: `<b>${worst.it.label}</b> · ${worst.it.low}` });
+
+  const price = Number(onlyNum($('#fPrice').value));
+  if (price >= 100000 && (state.scores.freq || 5) <= 2){
+    rows.push({ c:'var(--muted)', t:`10만원이 넘는데 자주 쓰지 않는다면 <b>1회 사용 비용</b>이 매우 커집니다` });
+  }
+  return rows;
+}
+
+function update(){
+  const picked = ITEMS.filter(it => state.scores[it.key]).length;
+  const complete = picked === ITEMS.length;
+  const total = calcTotal(state.scores);
+  const grade = gradeOf(total, state.scores);
+
+  $('#radarCount').textContent = picked;
+  $('#lockCount').textContent = `${picked} / ${ITEMS.length} 선택`;
+  animateRadar();
+  $('.radar-wrap').style.setProperty('--radarColor', picked ? grade.color : 'var(--line-strong)');
+
+  const card = $('#resultCard');
+  const wasLocked = card.classList.contains('locked');
+  card.classList.toggle('locked', !complete);
+
+  if (!complete){ shownScore = total; $('#scoreNum').textContent = total || MIN_TOTAL; }
+
+  card.style.setProperty('--gc', grade.color);
+  $('#scoreFill').style.width = Math.max(0, ((total - MIN_TOTAL) / (MAX_TOTAL - MIN_TOTAL)) * 100) + '%';
+
+  const badge = $('#gradeBadge');
+  if (badge.textContent !== grade.g || (wasLocked && complete)){
+    badge.classList.remove('pop'); void badge.offsetWidth; badge.classList.add('pop');
+  }
+  badge.textContent = grade.g;
+  $('#gradeAction').textContent = grade.action;
+  $('#gradeSub').textContent = grade.sub;
+  $('#comment').textContent = grade.comment;
+
+  const today = todayISO();
+  $('#mWait').textContent = grade.waitText;
+  $('#mWhen').textContent = grade.wait > 0 ? prettyDate(addDays(today, grade.wait))
+                          : grade.wait === 0 ? '오늘 결정 가능' : '지금은 보류';
+  const price = Number(onlyNum($('#fPrice').value));
+  $('#mPrice').textContent = price ? comma(price) + '원' : '미입력';
+  $('#resName').textContent = $('#fName').value.trim() || '이 소비';
+
+  if (complete){
+    animateScore(total);
+    $('#reasons').innerHTML = buildReasons()
+      .map(r => `<p class="reason" style="--rc:${r.c}"><i></i><span>${r.t}</span></p>`).join('');
+  } else {
+    $('#reasons').innerHTML = '';
+  }
+}
+
+/* --------------------------------------------------------------------------
+   [E] 초기화 & 부팅
+   -------------------------------------------------------------------------- */
+function resetForm(){
+  state.scores = {};
+  $$('.stat-row').forEach(r => r.classList.remove('done'));
+  $$('.sr-dot').forEach(d => d.setAttribute('aria-checked','false'));
+  $('#fName').value = ''; $('#fPrice').value = '';
+  shownScore = 0;
+  update();
+  window.scrollTo({ top:0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+
+function boot(){
+  $('#radarMax').textContent = ITEMS.length;
+  $('#lockCount').textContent = `0 / ${ITEMS.length} 선택`;
+  $('#scoreMax').textContent = `/ ${MAX_TOTAL}점`;
+
+  renderRadar();
+  renderStatRows();
+
+  $('#fPrice').addEventListener('input', e => {
+    const n = onlyNum(e.target.value);
+    e.target.value = n ? comma(n) : '';
+    update();
+  });
+  $('#fName').addEventListener('input', update);
+  $('#resetBtn').addEventListener('click', resetForm);
+
+  update();
+}
+
+boot();
+</script>
+</body>
+</html>
